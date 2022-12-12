@@ -1,4 +1,4 @@
-{% macro iceberg_merge(on_schema_change, tmp_relation, target_relation, unique_key, existing_relation, statement_name="main") %}
+{% macro iceberg_merge(on_schema_change, tmp_relation, target_relation, unique_key, existing_relation, update_nulls, statement_name="main") %}
     {% set dest_columns = process_schema_changes(on_schema_change, tmp_relation, existing_relation) %}
     {% if not dest_columns %}
       {%- set dest_columns = adapter.get_columns_in_relation(target_relation) -%}
@@ -28,9 +28,15 @@
     )
     when matched
       then update set
-        {% for col in update_columns %}
-          {{ '"' + col + '"' }} = {{ 'src."' + col + '"' }} {{ "," if not loop.last }}
-        {% endfor %}
+        {%- if update_nulls -%}
+          {% for col in update_columns %}
+            {{ '"' + col + '"' }} = {{ 'src."' + col + '"' }} {{ "," if not loop.last }}
+          {% endfor %}
+        {% else %}
+          {% for col in update_columns %}
+            {{ '"' + col + '"' }} = {{ 'coalesce(src."' + col + '", target."' + col + '")' }} {{ "," if not loop.last }}
+          {% endfor %}
+        {% endif %}
     when not matched
       then insert ({{ dest_cols_csv }})
        values ({{ src_cols_csv }});
